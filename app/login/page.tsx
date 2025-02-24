@@ -24,8 +24,7 @@ export default function LoginPage() {
   useEffect(() => {
     if (user) {
       console.log("Redirecting to dashboard...", user)
-      router.replace("/dashboard") // Changed to router.replace
-      router.refresh() // Force a router refresh
+      router.push("/dashboard");
     }
   }, [user, router])
 
@@ -37,8 +36,7 @@ export default function LoginPage() {
     try {
       await login(email, password)
       // Explicitly push to dashboard after successful login
-      router.replace("/dashboard")
-      router.refresh()
+      router.push('/dashboard')
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message)

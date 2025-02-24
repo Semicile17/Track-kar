@@ -1,6 +1,7 @@
 export function Footer() {
   return (
-    <footer className="w-full bg-background border-t">
+    <>
+    <footer className="w-full bg-background border-t  hidden lg:block ">
       <div className="container mx-auto px-6 py-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="space-y-4">
@@ -52,5 +53,9 @@ export function Footer() {
         </div>
       </div>
     </footer>
+    <footer className="lg:hidden">
+
+    </footer>
+    </>
   );
 } 
