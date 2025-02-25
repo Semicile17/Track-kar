@@ -1,14 +1,15 @@
 "use client"
 
-import { Car } from "lucide-react"
+import { BeatLoader } from "react-spinners"
 
 export function LoadingCar() {
   return (
-    <div className="h-full flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <Car className="h-12 w-12 text-primary animate-bounce" />
-        <p className="text-muted-foreground">Loading your vehicles...</p>
-      </div>
+    <div className="flex items-center justify-center w-full min-h-[200px]">
+      <BeatLoader 
+        color="var(--primary)"
+        size={15}
+        margin={2}
+      />
     </div>
-  )
+  );
 } 

@@ -2,14 +2,18 @@
 
 import { useState, useEffect } from "react";
 import {
-  Car,
   LogOut,
   Menu,
-  Truck,
-  Bus,
   Plus,
   Settings,
   User as UserIcon,
+  Search,
+  Moon,
+  Sun,
+  Box,
+  Package,
+  Wrench,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,8 +23,6 @@ import {
 } from "@/components/ui/sheet";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import VehicleMap from "@/components/vehicle-map";
-import { AddVehicleDialog } from "@/components/add-vehicle-dialog";
 import { UserMenu } from "@/components/user-menu";
 import { LoadingCar } from "@/components/ui/loading-car";
 import { useAuth } from "@/lib/auth";
@@ -31,35 +33,59 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
+import { AddAssetDialog } from "@/components/add-asset-dialog";
+import { AssetMap } from "@/components/asset-map";
+import { AssetLogo } from "@/components/ui/asset-logo";
+import { ProfileDialog } from "@/components/profile-dialog";
+import { cn } from "@/lib/utils";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 
-const getVehicleIcon = (type: string) => {
+interface Asset {
+  id: number;
+  name: string;
+  assetId: string;
+  status: string;
+  type: string;
+  trackerId: string;
+  location: { lat: number; lng: number; };
+}
+
+const getAssetIcon = (type: string) => {
   switch (type) {
-    case "truck":
-      return Truck;
-    case "bus":
-      return Bus;
+    case "equipment":
+      return Box;
+    case "machinery":
+      return Wrench;
     default:
-      return Car;
+      return Package;
   }
 };
 
-const initialVehicles = [
+const initialAssets = [
   {
     id: 1,
-    name: "Vehicle 1",
-    plateNumber: "ABC123",
+    name: "Asset 1",
+    assetId: "AST001",
     status: "active",
-    type: "Sedan",
-    gpsId: "GPS001",
+    type: "equipment",
+    trackerId: "TRK001",
     location: { lat: 51.5074, lng: -0.1278 }
   },
   {
     id: 2,
-    name: "Vehicle 2",
-    plateNumber: "XYZ789",
+    name: "Asset 2",
+    assetId: "AST002",
     status: "inactive",
-    type: "SUV",
-    gpsId: "GPS002",
+    type: "machinery",
+    trackerId: "TRK002",
     location: { lat: 51.5174, lng: -0.1378 }
   },
 ];
@@ -67,11 +93,15 @@ const initialVehicles = [
 export default function DashboardPage() {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const [vehicles, setVehicles] = useState(initialVehicles);
-  const [selectedVehicle, setSelectedVehicle] = useState(vehicles[0]);
-  const [addVehicleOpen, setAddVehicleOpen] = useState(false);
+  const [assets, setAssets] = useState<Asset[]>(initialAssets);
+  const [selectedAsset, setSelectedAsset] = useState<Asset | undefined>(assets[0]);
+  const [addAssetOpen, setAddAssetOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
 
   useEffect(() => {
     if (!user) {
@@ -81,26 +111,22 @@ export default function DashboardPage() {
 
   // Simulate fetching updated vehicle locations
   useEffect(() => {
-    const fetchVehicleUpdates = () => {
-      // In a real application, this would be a WebSocket connection or API call
-      // For now, we'll just update the vehicles array with new locations
-      setVehicles(prevVehicles => 
-        prevVehicles.map(vehicle => ({
-          ...vehicle,
+    setIsLoading(false); // Set loading to false immediately
+    
+    const updateInterval = setInterval(() => {
+      setAssets(prevAssets => 
+        prevAssets.map(asset => ({
+          ...asset,
           location: {
-            lat: vehicle.location?.lat || 51.5074,
-            lng: vehicle.location?.lng || -0.1278
+            lat: asset.location?.lat + (Math.random() - 0.5) * 0.001,
+            lng: asset.location?.lng + (Math.random() - 0.5) * 0.001
           }
         }))
       );
-    };
+    }, 5000); // Update every 5 seconds
 
-    // Initial fetch
-    fetchVehicleUpdates();
-
-    // Cleanup interval on unmount
     return () => {
-      setIsLoading(false);
+      clearInterval(updateInterval);
     };
   }, []);
 
@@ -116,28 +142,57 @@ export default function DashboardPage() {
     };
   }, [sidebarOpen]);
 
-  const handleAddVehicle = (vehicleData: any) => {
-    const newVehicle = {
-      id: vehicles.length + 1,
-      name: vehicleData.name || `Vehicle ${vehicles.length + 1}`,
-      plateNumber: vehicleData.plateNumber || `TEMP${vehicles.length + 1}`,
+  // Add theme toggle effect
+  useEffect(() => {
+    // Check if theme exists in localStorage
+    const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    
+    const initialTheme = savedTheme || (prefersDark ? "dark" : "light");
+    setTheme(initialTheme);
+    document.documentElement.classList.toggle("dark", initialTheme === "dark");
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "light" ? "dark" : "light";
+    setTheme(newTheme);
+    localStorage.setItem("theme", newTheme);
+    document.documentElement.classList.toggle("dark", newTheme === "dark");
+  };
+
+  const handleAddAsset = (assetData: any) => {
+    const newAsset = {
+      id: assets.length + 1,
+      name: assetData.name || `Asset ${assets.length + 1}`,
+      assetId: assetData.assetId || `AST${(assets.length + 1).toString().padStart(3, '0')}`,
       status: "inactive",
-      type: vehicleData.type || "Sedan",
-      gpsId: `GPS${(vehicles.length + 1).toString().padStart(3, '0')}`,
+      type: assetData.type || "equipment",
+      trackerId: `TRK${(assets.length + 1).toString().padStart(3, '0')}`,
       location: { lat: 51.5074, lng: -0.1278 },
     };
-    setVehicles([...vehicles, newVehicle]);
+    setAssets([...assets, newAsset]);
   };
 
-  const handleEditVehicle = (vehicle: any) => {
-    // Add edit logic
-    console.log("Edit vehicle:", vehicle);
+  const handleEditAsset = (asset: any) => {
+    console.log("Edit asset:", asset);
   };
 
-  const handleDeleteVehicle = (vehicle: any) => {
-    setVehicles(vehicles.filter((v) => v.id !== vehicle.id));
-    if (selectedVehicle.id === vehicle.id) {
-      setSelectedVehicle(vehicles[0]);
+  const handleDeleteAsset = (asset: any) => {
+    try {
+      const updatedAssets = assets.filter((a) => a.id !== asset.id);
+      setAssets(updatedAssets);
+
+      if (selectedAsset?.id === asset.id) {
+        if (updatedAssets.length > 0) {
+          setSelectedAsset(updatedAssets[0]);
+        } else {
+          setSelectedAsset(undefined);
+        }
+      }
+
+      setSidebarOpen(false);
+    } catch (error) {
+      console.error('Failed to delete asset:', error);
     }
   };
 
@@ -150,11 +205,24 @@ export default function DashboardPage() {
     }
   };
 
+  // Filter assets based on search query and status
+  const filteredAssets = assets.filter(asset => {
+    const matchesSearch = searchQuery.toLowerCase() === "" ||
+      asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      asset.assetId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      asset.type.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesStatus = filterStatus === "all" ||
+      asset.status === filterStatus;
+
+    return matchesSearch && matchesStatus;
+  });
+
   const SidebarContent = () => (
     <div className="flex h-full flex-col">
       <div className="flex items-center p-6 data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-500">
-        <Car className="h-6 w-6 text-primary" />
-        <span className="ml-2 text-lg font-semibold">Track-kar</span>
+        <AssetLogo className="h-6 w-6 text-primary" />
+        <span className="ml-2 text-lg font-semibold">Asset Tracker</span>
       </div>
       
       {/* User Menu - only shown on desktop */}
@@ -162,43 +230,163 @@ export default function DashboardPage() {
         <UserMenu />
       </div>
 
-      <div className="flex-1 mt-4 overflow-y-auto">
-        <nav className="px-2 space-y-1">
-          {vehicles.map((vehicle, index) => {
-            const VehicleIcon = getVehicleIcon(vehicle.type);
-            return (
-              <Button
-                key={vehicle.id}
-                variant={selectedVehicle.id === vehicle.id ? "secondary" : "ghost"}
-                className="w-full justify-start data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-left"
-                style={{ 
-                  animationDelay: `${(index + 1) * 100}ms`,
-                  animationDuration: '500ms',
-                }}
-                onClick={() => {
-                  setSelectedVehicle(vehicle);
-                  setSidebarOpen(false);
-                }}
-              >
-                <VehicleIcon className="mr-2 h-4 w-4" />
-                {vehicle.name}
-              </Button>
-            );
-          })}
-        </nav>
-        <div className="px-4 py-2">
+      {/* Quick Stats */}
+      <div className="px-4 py-3 border-b">
+        <h3 className="text-xs font-medium mb-2 text-muted-foreground">Quick Stats</h3>
+        <div className="grid grid-cols-2 gap-1.5">
+          <div className="bg-secondary/40 rounded-md p-2">
+            <div className="text-lg font-semibold">{assets.length}</div>
+            <div className="text-[10px] text-muted-foreground">Total Assets</div>
+          </div>
+          <div className="bg-secondary/40 rounded-md p-2">
+            <div className="text-lg font-semibold">
+              {assets.filter(a => a.status === 'active').length}
+            </div>
+            <div className="text-[10px] text-muted-foreground">Active</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Search and Filter */}
+      <div className="px-4 py-3 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="relative">
+          <Input
+            placeholder="Search by name, ID or type..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-8"
+          />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <div className="mt-2 flex items-center gap-1.5">
           <Button
-            className="w-full justify-start data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-left"
-            style={{ 
-              animationDelay: `${(vehicles.length + 1) * 100}ms`,
-              animationDuration: '500ms',
-            }}
-            onClick={() => setAddVehicleOpen(true)}
+            variant={filterStatus === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterStatus("all")}
+            className="h-7 text-xs flex-1"
           >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Vehicle
+            All Assets
+          </Button>
+          <Button
+            variant={filterStatus === "active" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterStatus("active")}
+            className="h-7 text-xs flex-1"
+          >
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5" />
+            Active
+          </Button>
+          <Button
+            variant={filterStatus === "inactive" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilterStatus("inactive")}
+            className="h-7 text-xs flex-1"
+          >
+            <div className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5" />
+            Inactive
           </Button>
         </div>
+      </div>
+
+      {/* Asset List */}
+      <div className="flex-1 mt-2 overflow-y-auto">
+        <div className="sticky top-0 px-4 py-2 mb-2 flex items-center justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 border-b">
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 text-primary" />
+            <h3 className="text-xs font-medium">Your Assets</h3>
+          </div>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary">
+            {filteredAssets.length} of {assets.length}
+          </span>
+        </div>
+        <nav className="px-2 space-y-1">
+          {filteredAssets.length > 0 ? (
+            filteredAssets.map((asset, index) => {
+              const AssetIcon = getAssetIcon(asset.type);
+              return (
+                <Button
+                  key={asset.id}
+                  variant={selectedAsset?.id === asset.id ? "secondary" : "ghost"}
+                  className={cn(
+                    "w-full justify-start py-2.5 px-3 transition-all duration-200",
+                    "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-left",
+                    "group hover:bg-secondary/40",
+                    selectedAsset?.id === asset.id && "bg-secondary/60 shadow-sm"
+                  )}
+                  style={{ 
+                    animationDelay: `${(index + 1) * 100}ms`,
+                    animationDuration: '500ms',
+                  }}
+                  onClick={() => {
+                    setSelectedAsset(asset);
+                    setSidebarOpen(false);
+                  }}
+                >
+                  <div className="flex items-center w-full gap-3">
+                    <div className={cn(
+                      "p-1.5 rounded-md transition-colors",
+                      selectedAsset?.id === asset.id ? "bg-background/40" : "bg-secondary/40 group-hover:bg-background/40"
+                    )}>
+                      <AssetIcon className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="text-sm font-medium">{asset.name}</div>
+                      <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                        <span>{asset.assetId}</span>
+                        <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/50" />
+                        <span className="capitalize">{asset.type}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <div className={cn(
+                        "px-1.5 py-0.5 rounded-full text-[10px] font-medium",
+                        asset.status === 'active' 
+                          ? "bg-green-500/10 text-green-500"
+                          : "bg-red-500/10 text-red-500"
+                      )}>
+                        {asset.status}
+                      </div>
+                    </div>
+                  </div>
+                </Button>
+              );
+            })
+          ) : (
+            <div className="px-4 py-8 text-center">
+              <Package className="h-8 w-8 mx-auto text-muted-foreground/30" />
+              <p className="mt-2 text-sm text-muted-foreground">No assets found</p>
+              <p className="text-xs text-muted-foreground/70">Try adjusting your search or filters</p>
+            </div>
+          )}
+        </nav>
+        {assets.length > 0 && (
+          <div className="px-4 py-3 mt-2 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <Button
+              className="w-full justify-start bg-gradient-to-r from-primary/90 to-primary hover:from-primary hover:to-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-left group"
+              style={{ 
+                animationDelay: `${(assets.length + 1) * 100}ms`,
+                animationDuration: '500ms',
+              }}
+              onClick={() => setAddAssetOpen(true)}
+            >
+              <div className="flex items-center w-full">
+                <Plus className="mr-2 h-4 w-4 group-hover:rotate-90 transition-transform duration-300" />
+                <span className="flex-1 text-sm">Add New Asset</span>
+              </div>
+            </Button>
+            <p className="text-[11px] text-muted-foreground mt-2 text-center">
+              Add and track your assets in real-time
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Mobile Logout Button */}
@@ -255,8 +443,8 @@ export default function DashboardPage() {
               </SheetContent>
             </Sheet>
             <div className="ml-4 flex items-center">
-              <Car className="h-6 w-6 text-primary" />
-              <span className="ml-2 text-lg font-semibold">Track-kar</span>
+              <AssetLogo className="h-6 w-6 text-primary" />
+              <span className="ml-2 text-lg font-semibold">Asset Tracker</span>
             </div>
           </div>
 
@@ -265,7 +453,29 @@ export default function DashboardPage() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon">
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    onClick={toggleTheme}
+                  >
+                    {theme === "light" ? (
+                      <Moon className="h-5 w-5 rotate-90 transition-transform" />
+                    ) : (
+                      <Sun className="h-5 w-5 rotate-0 transition-transform" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {theme === "light" ? "Dark Mode" : "Light Mode"}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    onClick={() => setProfileOpen(true)}
+                  >
                     <UserIcon className="h-5 w-5" />
                   </Button>
                 </TooltipTrigger>
@@ -286,17 +496,34 @@ export default function DashboardPage() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-screen lg:ml-64">
-        <main className="flex-1 pt-16 lg:pt-0">
-          <div className="h-screen p-5">
+        <main className="flex-1 pt-16 lg:pt-0 flex items-center">
+          <div className="w-full p-5">
             {isLoading ? (
               <LoadingCar />
-            ) : (
-              <VehicleMap
-                vehicle={selectedVehicle}
-                onEdit={handleEditVehicle}
-                onDelete={handleDeleteVehicle}
+            ) : assets.length === 0 ? (
+              <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] lg:min-h-screen p-8 text-center">
+                <div className="w-48 h-48 mb-6 text-primary/20">
+                  <Package className="w-full h-full animate-float" />
+                </div>
+                <h3 className="text-2xl font-semibold mb-2">No Assets Found</h3>
+                <p className="text-muted-foreground mb-6 max-w-md">
+                  You haven't added any assets yet. Add your first asset to start tracking!
+                </p>
+                <Button
+                  onClick={() => setAddAssetOpen(true)}
+                  className="bg-gradient-to-r from-primary/90 to-primary hover:from-primary hover:to-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300"
+                >
+                  <Plus className="mr-2 h-5 w-5" />
+                  Add Your First Asset
+                </Button>
+              </div>
+            ) : selectedAsset ? (
+              <AssetMap
+                asset={selectedAsset}
+                onEdit={handleEditAsset}
+                onDelete={handleDeleteAsset}
               />
-            )}
+            ) : null}
           </div>
         </main>
         <Footer />
@@ -321,6 +548,22 @@ export default function DashboardPage() {
           }
         }
 
+        @keyframes float {
+          0% {
+            transform: translateY(0px);
+          }
+          50% {
+            transform: translateY(-10px);
+          }
+          100% {
+            transform: translateY(0px);
+          }
+        }
+
+        .animate-float {
+          animation: float 3s ease-in-out infinite;
+        }
+
         .slide-in {
           animation: slideIn 0.3s ease-out;
         }
@@ -330,10 +573,16 @@ export default function DashboardPage() {
         }
       `}</style>
 
-      <AddVehicleDialog
-        open={addVehicleOpen}
-        onOpenChange={setAddVehicleOpen}
-        onAdd={handleAddVehicle}
+      <AddAssetDialog
+        open={addAssetOpen}
+        onOpenChange={setAddAssetOpen}
+        onAdd={handleAddAsset}
+      />
+
+      <ProfileDialog
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+        user={user}
       />
     </div>
   );

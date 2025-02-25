@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Edit2, Trash2, Search, Calendar, Clock, Gauge, MapPin, Info, History, Navigation2 } from "lucide-react"
+import { Edit2, Trash2, Search, Calendar, Clock, Gauge, MapPin, Info, History, Navigation2, Package } from "lucide-react"
 import { GoogleMap, useJsApiLoader, Marker, Polyline } from "@react-google-maps/api"
 import { Autocomplete } from "@react-google-maps/api"
 import {
@@ -29,24 +29,27 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { DeleteAssetDialog } from "@/components/delete-asset-dialog"
+import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
 
-interface Vehicle {
+interface Asset {
   id: number
   name: string
-  plateNumber: string
+  assetId: string
   status: string
   type: string
-  gpsId: string
+  trackerId: string
   location?: {
     lat: number
     lng: number
   }
 }
 
-interface VehicleMapProps {
-  vehicle: Vehicle
-  onEdit: (vehicle: Vehicle) => void
-  onDelete: (vehicle: Vehicle) => void
+interface AssetMapProps {
+  asset: Asset
+  onEdit: (asset: Asset) => void
+  onDelete: (asset: Asset) => void
 }
 
 const mapContainerStyle = {
@@ -59,58 +62,57 @@ const center = {
   lng: -0.1278,
 }
 
-// Simulate vehicle movement within a boundary
+// Simulate asset movement within a boundary
 const generateNewLocation = (currentLocation: { lat: number; lng: number }) => {
-  const movement = 0.001; // Approximately 100 meters
+  const movement = 0.001 // Approximately 100 meters
   return {
     lat: currentLocation.lat + (Math.random() - 0.5) * movement,
     lng: currentLocation.lng + (Math.random() - 0.5) * movement,
-  };
-};
+  }
+}
 
 const getCardinalDirection = (angle: number): string => {
-  const directions = ['North', 'Northeast', 'East', 'Southeast', 'South', 'Southwest', 'West', 'Northwest'];
-  const index = Math.round(((angle %= 360) < 0 ? angle + 360 : angle) / 45) % 8;
-  return directions[index];
-};
+  const directions = ['North', 'Northeast', 'East', 'Southeast', 'South', 'Southwest', 'West', 'Northwest']
+  const index = Math.round(((angle %= 360) < 0 ? angle + 360 : angle) / 45) % 8
+  return directions[index]
+}
 
 const calculateHeading = (prev: google.maps.LatLngLiteral, current: google.maps.LatLngLiteral): number => {
-  const lat1 = prev.lat * Math.PI / 180;
-  const lat2 = current.lat * Math.PI / 180;
-  const lng1 = prev.lng * Math.PI / 180;
-  const lng2 = current.lng * Math.PI / 180;
+  const lat1 = prev.lat * Math.PI / 180
+  const lat2 = current.lat * Math.PI / 180
+  const lng1 = prev.lng * Math.PI / 180
+  const lng2 = current.lng * Math.PI / 180
 
-  const y = Math.sin(lng2 - lng1) * Math.cos(lat2);
+  const y = Math.sin(lng2 - lng1) * Math.cos(lat2)
   const x = Math.cos(lat1) * Math.sin(lat2) -
-          Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1);
-  const angle = Math.atan2(y, x) * 180 / Math.PI;
-  return (angle + 360) % 360;
-};
+          Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1)
+  const angle = Math.atan2(y, x) * 180 / Math.PI
+  return (angle + 360) % 360
+}
 
 // Mock history data
 const mockHistoryData = [
   {
     date: "2024-01-20",
     locations: [
-      { time: "09:00", location: { lat: 51.5074, lng: -0.1278 }, address: "London Bridge" },
-      { time: "14:30", location: { lat: 51.5171, lng: -0.1404 }, address: "Oxford Street" },
+      { time: "09:00", location: { lat: 51.5074, lng: -0.1278 }, address: "Warehouse A" },
+      { time: "14:30", location: { lat: 51.5171, lng: -0.1404 }, address: "Storage Unit B" },
     ]
   },
   {
     date: "2024-01-19",
     locations: [
-      { time: "10:15", location: { lat: 51.5074, lng: -0.1278 }, address: "Piccadilly Circus" },
-      { time: "16:45", location: { lat: 51.5171, lng: -0.1404 }, address: "Covent Garden" },
+      { time: "10:15", location: { lat: 51.5074, lng: -0.1278 }, address: "Factory Floor" },
+      { time: "16:45", location: { lat: 51.5171, lng: -0.1404 }, address: "Loading Bay" },
     ]
   },
-  // Add more mock data as needed
-];
+]
 
-export default function VehicleMap({ vehicle, onEdit, onDelete }: VehicleMapProps) {
+export function AssetMap({ asset, onEdit, onDelete }: AssetMapProps) {
   const [map, setMap] = useState<google.maps.Map | null>(null)
   const [searchBox, setSearchBox] = useState<google.maps.places.Autocomplete | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [currentLocation, setCurrentLocation] = useState(vehicle.location || center)
+  const [currentLocation, setCurrentLocation] = useState(asset.location || center)
   const [pathCoordinates, setPathCoordinates] = useState<google.maps.LatLngLiteral[]>([])
   const [isMoving, setIsMoving] = useState(false)
   const [locationName, setLocationName] = useState("")
@@ -121,6 +123,7 @@ export default function VehicleMap({ vehicle, onEdit, onDelete }: VehicleMapProp
   const [selectedTime, setSelectedTime] = useState<string>("")
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [selectedHistoryLocation, setSelectedHistoryLocation] = useState<any>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   
   const { isLoaded, loadError } = useJsApiLoader({
     id: "google-map-script",
@@ -131,9 +134,9 @@ export default function VehicleMap({ vehicle, onEdit, onDelete }: VehicleMapProp
   // Initialize geocoder
   useEffect(() => {
     if (isLoaded && !geocoder.current) {
-      geocoder.current = new google.maps.Geocoder();
+      geocoder.current = new google.maps.Geocoder()
     }
-  }, [isLoaded]);
+  }, [isLoaded])
 
   // Update location name
   useEffect(() => {
@@ -142,32 +145,25 @@ export default function VehicleMap({ vehicle, onEdit, onDelete }: VehicleMapProp
         { location: currentLocation },
         (results, status) => {
           if (status === 'OK' && results?.[0]) {
-            // Get the most relevant address component
-            const address = results[0].formatted_address;
-            setLocationName(address);
+            const address = results[0].formatted_address
+            setLocationName(address)
           }
         }
-      );
+      )
     }
-  }, [currentLocation]);
+  }, [currentLocation])
 
   // Simulate real-time updates
   useEffect(() => {
-    // Set vehicle as stationary
-    setIsMoving(false);
+    setIsMoving(false)
+    const initialLocation = asset.location || center
+    setCurrentLocation(initialLocation)
+    setPathCoordinates([])
     
-    // Keep the vehicle at its initial position
-    const initialLocation = vehicle.location || center;
-    setCurrentLocation(initialLocation);
-    
-    // Clear any existing path
-    setPathCoordinates([]);
-    
-    // Center map on the stationary location
     if (map) {
-      map.panTo(initialLocation);
+      map.panTo(initialLocation)
     }
-  }, [map, vehicle.location]);
+  }, [map, asset.location])
 
   const onLoad = (map: google.maps.Map) => {
     setMap(map)
@@ -212,37 +208,46 @@ export default function VehicleMap({ vehicle, onEdit, onDelete }: VehicleMapProp
     }
   }
 
+  const handleDeleteClick = () => {
+    setDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = () => {
+    onDelete(asset)
+    setDeleteDialogOpen(false)
+  }
+
   if (loadError) {
     console.error("Error loading maps:", loadError)
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-4rem-3rem)] pb-16 lg:pb-24">
+    <div className="flex flex-col min-h-[calc(100vh-8rem)] lg:min-h-[calc(100vh-4rem)] gap-4">
       {/* Header Section */}
       <Card className="p-4 border-none shadow-md bg-gradient-to-r from-background to-secondary/10">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <h2 className="text-2xl font-bold">{vehicle.name}</h2>
+              <h2 className="text-2xl font-bold">{asset.name}</h2>
               <Badge variant="outline" className="text-xs font-normal">
-                {vehicle.type}
+                {asset.type}
               </Badge>
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center text-sm text-gray-500">
                 <Info className="h-4 w-4 mr-2 text-primary" />
-                <span>Plate Number: {vehicle.plateNumber}</span>
+                <span>Asset ID: {asset.assetId}</span>
               </div>
               <div className="flex items-center text-sm text-gray-500">
                 <MapPin className="h-4 w-4 mr-2 text-primary" />
-                <span>Near: {locationName || "Loading location..."}</span>
+                <span>Location: {locationName || "Loading location..."}</span>
               </div>
               <div className="flex items-center text-sm text-gray-500">
                 <Gauge className="h-4 w-4 mr-2 text-primary" />
                 <span>Status: </span>
                 <span className="ml-1 inline-flex items-center">
                   <span className={`w-2 h-2 rounded-full mr-1 ${isMoving ? 'bg-green-500' : 'bg-red-500'}`} />
-                  {isMoving ? "Moving" : "At Rest"}
+                  {isMoving ? "Moving" : "Stationary"}
                 </span>
               </div>
               {isMoving && heading && (
@@ -275,19 +280,23 @@ export default function VehicleMap({ vehicle, onEdit, onDelete }: VehicleMapProp
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" onClick={() => onEdit(vehicle)}>
+                  <Button variant="outline" size="icon" onClick={() => onEdit(asset)}>
                     <Edit2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Edit Vehicle</TooltipContent>
+                <TooltipContent>Edit Asset</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="destructive" size="icon" onClick={() => onDelete(vehicle)}>
+                  <Button 
+                    variant="destructive" 
+                    size="icon" 
+                    onClick={handleDeleteClick}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Delete Vehicle</TooltipContent>
+                <TooltipContent>Delete Asset</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
@@ -295,9 +304,9 @@ export default function VehicleMap({ vehicle, onEdit, onDelete }: VehicleMapProp
       </Card>
 
       {/* Main Content */}
-      <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden">
+      <div className="flex flex-col lg:flex-row gap-4 flex-1">
         {/* Map Section */}
-        <div className="flex-1 min-h-[300px] lg:min-h-0">
+        <div className="flex-1 min-h-[400px] lg:min-h-0">
           <Card className="border-none shadow-md overflow-hidden h-full">
             {isLoaded ? (
               <GoogleMap
@@ -357,20 +366,20 @@ export default function VehicleMap({ vehicle, onEdit, onDelete }: VehicleMapProp
 
         {/* Sidebar */}
         <div className="w-full lg:w-80 space-y-2 overflow-y-auto">
-          {/* Vehicle Info Card */}
+          {/* Asset Info Card */}
           <Card className="p-3 border-none shadow-md bg-gradient-to-b from-background to-secondary/5">
             <div className="flex items-center gap-1.5 mb-2">
               <Info className="h-4 w-4 text-primary" />
-              <h3 className="font-semibold text-sm">Vehicle Details</h3>
+              <h3 className="font-semibold text-sm">Asset Details</h3>
             </div>
             <div className="space-y-2 text-xs text-gray-500">
               <div className="flex justify-between items-center pb-1.5 border-b">
                 <span>Type</span>
-                <span className="font-medium">{vehicle.type}</span>
+                <span className="font-medium">{asset.type}</span>
               </div>
               <div className="flex justify-between items-center pb-1.5 border-b">
-                <span>GPS ID</span>
-                <span className="font-medium">{vehicle.gpsId}</span>
+                <span>Tracker ID</span>
+                <span className="font-medium">{asset.trackerId}</span>
               </div>
               <div className="flex justify-between items-center pb-1.5 border-b">
                 <span>Status</span>
@@ -420,38 +429,110 @@ export default function VehicleMap({ vehicle, onEdit, onDelete }: VehicleMapProp
                     See More
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle>Location History</DialogTitle>
+                <DialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
+                  <DialogHeader className="px-6 py-4 border-b bg-background sticky top-0 z-10">
+                    <DialogTitle className="text-xl">Asset Movement History</DialogTitle>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Select Date</label>
-                      <CalendarComponent
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={setSelectedDate}
-                        className="rounded-md border"
-                      />
+                  <div className="p-6 overflow-y-auto max-h-[80vh]">
+                    <div className="space-y-6">
+                      {/* Date Selection */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-primary" />
+                          Select Date
+                        </Label>
+                        <div className="border rounded-lg bg-muted/30">
+                          <CalendarComponent
+                            mode="single"
+                            selected={selectedDate}
+                            onSelect={setSelectedDate}
+                            className="[&>div]:!bg-transparent [&_.rdp-day_focus]:bg-primary [&_.rdp-day_hover]:bg-primary/10"
+                            initialFocus
+                            disabled={(date) => date > new Date()}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Time Selection - Shows up when date is selected */}
+                      {selectedDate && (
+                        <div 
+                          className="space-y-2 animate-in fade-in-50 slide-in-from-top-3 duration-300"
+                          style={{ '--enter-delay': '200ms' } as React.CSSProperties}
+                        >
+                          <Label className="text-sm font-medium flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-primary" />
+                            Select Time
+                          </Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {selectedDate && mockHistoryData
+                              .find(h => h.date === selectedDate.toISOString().split('T')[0])
+                              ?.locations.map(l => (
+                                <Button
+                                  key={l.time}
+                                  variant={selectedTime === l.time ? "default" : "outline"}
+                                  className={cn(
+                                    "w-full justify-start text-sm",
+                                    selectedTime === l.time && "bg-primary text-primary-foreground"
+                                  )}
+                                  onClick={() => setSelectedTime(l.time)}
+                                >
+                                  <Clock className="mr-2 h-4 w-4" />
+                                  {l.time}
+                                </Button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Location Details - Shows up when both date and time are selected */}
+                      {selectedDate && selectedTime && (
+                        <div 
+                          className="space-y-2 animate-in fade-in-50 slide-in-from-top-3 duration-300"
+                          style={{ '--enter-delay': '400ms' } as React.CSSProperties}
+                        >
+                          <Label className="text-sm font-medium flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-primary" />
+                            Location Details
+                          </Label>
+                          <Card className="p-4 bg-muted/30 border shadow-sm">
+                            {selectedHistoryLocation ? (
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between pb-2 border-b">
+                                  <span className="text-sm text-muted-foreground">Time</span>
+                                  <span className="font-medium">{selectedTime}</span>
+                                </div>
+                                <div className="flex items-center justify-between pb-2 border-b">
+                                  <span className="text-sm text-muted-foreground">Location</span>
+                                  <span className="font-medium text-right">{selectedHistoryLocation.address}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm text-muted-foreground">Coordinates</span>
+                                  <span className="font-mono text-xs bg-muted p-1 rounded">
+                                    {selectedHistoryLocation.location.lat.toFixed(6)}, {selectedHistoryLocation.location.lng.toFixed(6)}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground text-center py-2">
+                                Select a date and time to view location details
+                              </p>
+                            )}
+                          </Card>
+                        </div>
+                      )}
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Select Time</label>
-                      <Select onValueChange={setSelectedTime} value={selectedTime}>
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Select time" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {selectedDate && mockHistoryData
-                            .find(h => h.date === selectedDate.toISOString().split('T')[0])
-                            ?.locations.map(l => (
-                              <SelectItem key={l.time} value={l.time}>
-                                {l.time}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
+
+                    {/* Action Button */}
+                    <div className="flex justify-end mt-6">
+                      <Button 
+                        onClick={handleHistorySelect}
+                        disabled={!selectedDate || !selectedTime}
+                        className="bg-gradient-to-r from-primary/90 to-primary hover:from-primary hover:to-primary/90 transition-all duration-300"
+                      >
+                        <MapPin className="mr-2 h-4 w-4" />
+                        View on Map
+                      </Button>
                     </div>
-                    <Button onClick={handleHistorySelect}>View Location</Button>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -479,7 +560,14 @@ export default function VehicleMap({ vehicle, onEdit, onDelete }: VehicleMapProp
           </Card>
         </div>
       </div>
+
+      <DeleteAssetDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={handleDeleteConfirm}
+        assetName={asset.name}
+        assetId={asset.assetId}
+      />
     </div>
   )
-}
-
+} 
