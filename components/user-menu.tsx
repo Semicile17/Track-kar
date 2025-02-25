@@ -18,11 +18,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useRouter } from "next/navigation";
 
 export function UserMenu() {
   const { user, logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const router = useRouter();
 
   // Add theme toggle effect
   useEffect(() => {
@@ -70,19 +72,10 @@ export function UserMenu() {
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="center" className="w-56 mt-2 p-2">
-            <div className="flex flex-col items-center gap-1 p-2 border-b mb-2">
-              <p className="font-medium text-sm">{user?.email}</p>
-              <p className="text-xs text-muted-foreground">
-                Member since {new Date(user?.createdAt || Date.now()).toLocaleDateString()}
-              </p>
-            </div>
-            <DropdownMenuItem 
-              className="flex items-center gap-2 py-2 cursor-pointer hover:bg-secondary focus:bg-secondary group"
-              onClick={() => setProfileOpen(true)}
-            >
-              <User className="h-4 w-4 text-primary group-hover:text-primary/80 transition-colors" />
-              <span>View Profile</span>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => router.push("/profile")}>
+              <User className="mr-2 h-4 w-4" />
+              Profile
             </DropdownMenuItem>
             <DropdownMenuItem className="flex items-center gap-2 py-2 cursor-pointer hover:bg-secondary focus:bg-secondary group">
               <Settings className="h-4 w-4 text-primary group-hover:text-primary/80 transition-colors" />

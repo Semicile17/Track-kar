@@ -1,23 +1,43 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
-  const currentUser = request.cookies.get('user')
-  const isAuthPage = request.nextUrl.pathname === '/login' || 
-                    request.nextUrl.pathname === '/signup' || 
-                    request.nextUrl.pathname === '/'
+// Define protected and public routes
+const protectedRoutes = ['/dashboard', '/get-gps', '/gps-verify', '/profile']
+const authRoutes = ['/login', '/signup']
 
-  if (isAuthPage && currentUser) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+export function middleware(request: NextRequest) {
+  const token = request.cookies.get('token')?.value
+  const path = request.nextUrl.pathname
+
+  // Check if the route is protected
+  const isProtectedRoute = protectedRoutes.some(route => path.startsWith(route))
+  const isAuthRoute = authRoutes.includes(path) || path === '/'
+
+  // If trying to access protected route without token, redirect to login
+  if (isProtectedRoute && !token) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('from', path) // Save the attempted path
+    return NextResponse.redirect(loginUrl)
   }
 
-  if (!isAuthPage && !currentUser) {
-    return NextResponse.redirect(new URL('/login', request.url))
+  // If trying to access auth routes with token, redirect to dashboard
+  if (isAuthRoute && token) {
+    return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
   return NextResponse.next()
 }
 
+// Configure the middleware to run on specific paths
 export const config = {
-  matcher: ['/', '/login', '/signup']
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
 } 

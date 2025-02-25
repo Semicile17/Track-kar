@@ -2,18 +2,44 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { api } from './api';
+
+// Cookie helper functions
+const setCookie = (name: string, value: string, days: number) => {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; secure; samesite=strict`;
+};
+
+const getCookie = (name: string) => {
+  return document.cookie.split('; ').find(row => row.startsWith(`${name}=`))?.split('=')[1];
+};
+
+const removeCookie = (name: string) => {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+};
+
+interface UserProfile {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  address?: string;
+  company?: string;
+  role?: string;
+}
 
 interface User {
   id: string;
   email: string;
-  createdAt: string;
+  profile?: UserProfile;
 }
 
 interface AuthContextType {
   user: User | null;
+  token: string | null;
   signup: (email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateUserProfile: (profile: UserProfile) => Promise<void>;
   isLoading: boolean;
 }
 
@@ -21,98 +47,95 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    // Check if user is logged in from localStorage
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+  const fetchUserProfile = async () => {
+    try {
+      const profile = await api.getProfile();
+      setUser(prev => prev ? { ...prev, profile } : null);
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error);
     }
-    setIsLoading(false);
-  }, []);
-
-  // Redirect to dashboard when user is set
-  useEffect(() => {
-    if (user) {
-      router.push("/dashboard");
-    }
-  }, [user, router]);
-
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
   };
 
-  const validatePassword = (password: string): boolean => {
-    return password.length >= 6;
-  };
-
-  const signup = async (email: string, password: string) => {
-    if (!validateEmail(email)) {
-      throw new Error("Invalid email format");
-    }
-
-    if (!validatePassword(password)) {
-      throw new Error("Password must be at least 6 characters long");
-    }
-
-    // Here you would typically make an API call to your backend
-    // For now, we'll simulate it with localStorage
-    // Check if user already exists
-    const existingUsers = JSON.parse(localStorage.getItem("users") || "[]");
-    if (existingUsers.some((u: User) => u.email === email)) {
-      throw new Error("Email already in use");
-    }
-
-    const newUser = {
-      id: crypto.randomUUID(),
-      email,
-      createdAt: new Date().toISOString(),
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const storedToken = getCookie('token');
+        if (storedToken) {
+          setToken(storedToken);
+          await fetchUserProfile();
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        // Clear invalid auth state
+        removeCookie('token');
+        setToken(null);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    // Save to "database"
-    existingUsers.push(newUser);
-    localStorage.setItem("users", JSON.stringify(existingUsers));
+    initAuth();
+  }, []);
 
-    // Log the user in
-    localStorage.setItem("user", JSON.stringify(newUser));
-    setUser(newUser);
+  const signup = async (email: string, password: string) => {
+    try {
+      const data = await api.signup(email, password);
+      if (data.status === 'success' && data.token) {
+        setCookie('token', data.token, 7); // 7 days
+        setToken(data.token);
+        setUser({ id: 'temp-id', email });
+        router.push("/dashboard");
+      }
+    } catch (error) {
+      throw error;
+    }
   };
 
   const login = async (email: string, password: string) => {
-    if (!validateEmail(email)) {
-      throw new Error("Invalid email format");
+    try {
+      const data = await api.login(email, password);
+      if (data.status === 'success' && data.token) {
+        setCookie('token', data.token, 7); // 7 days
+        setToken(data.token);
+        setUser({ id: 'temp-id', email });
+        router.push("/dashboard");
+      }
+    } catch (error) {
+      throw error;
     }
-
-    if (!validatePassword(password)) {
-      throw new Error("Invalid password format");
-    }
-
-    // Here you would typically verify with your backend
-    // For now, we'll check localStorage
-    const existingUsers = JSON.parse(localStorage.getItem("users") || "[]");
-    const user = existingUsers.find((u: User) => u.email === email);
-
-    if (!user) {
-      throw new Error("Invalid email or password");
-    }
-
-    // In a real app, you would verify the password hash here
-    // For demo purposes, we'll just log them in
-    localStorage.setItem("user", JSON.stringify(user));
-    setUser(user);
   };
 
   const logout = async () => {
-    localStorage.removeItem("user");
+    removeCookie('token');
+    setToken(null);
     setUser(null);
     router.push("/");
   };
 
+  const updateUserProfile = async (profileData: UserProfile) => {
+    try {
+      const updatedProfile = await api.updateProfile(profileData);
+      setUser(prev => prev ? { ...prev, profile: updatedProfile } : null);
+    } catch (error) {
+      throw error;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, signup, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      token, 
+      signup, 
+      login, 
+      logout, 
+      updateUserProfile,
+      isLoading 
+    }}>
       {children}
     </AuthContext.Provider>
   );

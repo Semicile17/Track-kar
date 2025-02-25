@@ -47,6 +47,8 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { format } from 'date-fns'
+import { enUS } from 'date-fns/locale'
 
 interface Asset {
   id: number;
@@ -254,24 +256,24 @@ export default function DashboardPage() {
             placeholder="Search by name, ID or type..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8"
+            className="w-full pl-8 h-7 text-xs"
           />
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
             >
-              <X className="h-4 w-4" />
+              <X className="h-3 w-3" />
             </button>
           )}
         </div>
-        <div className="mt-2 flex items-center gap-1.5">
+        <div className="mt-2 flex items-center gap-1">
           <Button
             variant={filterStatus === "all" ? "default" : "outline"}
             size="sm"
             onClick={() => setFilterStatus("all")}
-            className="h-7 text-xs flex-1"
+            className="h-6 text-[10px] flex-1"
           >
             All Assets
           </Button>
@@ -279,18 +281,18 @@ export default function DashboardPage() {
             variant={filterStatus === "active" ? "default" : "outline"}
             size="sm"
             onClick={() => setFilterStatus("active")}
-            className="h-7 text-xs flex-1"
+            className="h-6 text-[10px] flex-1"
           >
-            <div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5" />
+            <div className="w-1 h-1 rounded-full bg-green-500 mr-1" />
             Active
           </Button>
           <Button
             variant={filterStatus === "inactive" ? "default" : "outline"}
             size="sm"
             onClick={() => setFilterStatus("inactive")}
-            className="h-7 text-xs flex-1"
+            className="h-6 text-[10px] flex-1"
           >
-            <div className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5" />
+            <div className="w-1 h-1 rounded-full bg-red-500 mr-1" />
             Inactive
           </Button>
         </div>

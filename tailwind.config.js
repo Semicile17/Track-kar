@@ -53,7 +53,7 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ["var(--font-inter)"],
+        sans: ["var(--font-poppins)"],
       },
       keyframes: {
         "accordion-down": {
@@ -72,7 +72,7 @@ module.exports = {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        "car-drive": "car-drive 2s ease-in-out infinite",
+        "car-drive": "car-drive 3s linear infinite",
       },
       borderRadius: {
         lg: "var(--radius)",

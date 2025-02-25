@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { api } from "@/lib/api"
 
 export default function GpsVerifyPage() {
   const [gpsId, setGpsId] = useState("")
@@ -15,8 +16,13 @@ export default function GpsVerifyPage() {
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Add your verification logic here
-    router.push("/dashboard")
+    try {
+      await api.verifyGpsDevice(gpsId, plateNumber)
+      router.push("/dashboard")
+    } catch (error) {
+      console.error('Failed to verify GPS:', error)
+      // Handle error (show error message to user)
+    }
   }
 
   return (

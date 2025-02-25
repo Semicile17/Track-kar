@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { api } from "@/lib/api"
 
 export default function GetGpsPage() {
   const [formData, setFormData] = useState({
@@ -21,8 +22,13 @@ export default function GetGpsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Add your form submission logic here
-    router.push("/dashboard")
+    try {
+      await api.submitGpsApplication(formData)
+      router.push("/dashboard")
+    } catch (error) {
+      console.error('Failed to submit application:', error)
+      // Handle error (show error message to user)
+    }
   }
 
   return (
