@@ -49,15 +49,20 @@ import {
 } from "@/components/ui/command";
 import { format } from 'date-fns'
 import { enUS } from 'date-fns/locale'
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 interface Asset {
-  id: number;
+  id: string;
   name: string;
-  assetId: string;
-  status: string;
+  gpsId: string;
   type: string;
-  trackerId: string;
-  location: { lat: number; lng: number; };
+  status: 'active' | 'inactive';
+  location: {
+    latitude: number;
+    longitude: number;
+    timestamp?: string;
+  };
 }
 
 const getAssetIcon = (type: string) => {
@@ -73,7 +78,7 @@ const getAssetIcon = (type: string) => {
 
 const initialAssets = [
   {
-    id: 1,
+    id: "1",
     name: "Asset 1",
     assetId: "AST001",
     status: "active",
@@ -82,7 +87,7 @@ const initialAssets = [
     location: { lat: 51.5074, lng: -0.1278 }
   },
   {
-    id: 2,
+    id: "2",
     name: "Asset 2",
     assetId: "AST002",
     status: "inactive",
@@ -95,42 +100,72 @@ const initialAssets = [
 export default function DashboardPage() {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const [assets, setAssets] = useState<Asset[]>(initialAssets);
-  const [selectedAsset, setSelectedAsset] = useState<Asset | undefined>(assets[0]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [addAssetOpen, setAddAssetOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!user) {
-      router.push('/login');
+  const fetchAssets = async () => {
+    try {
+      setIsLoading(true);
+      const response = await api.getAssets();
+      const assetsData = Array.isArray(response) ? response : [];
+      
+      // Initialize assets with default location if none exists
+      const assetsWithLocation = assetsData.map(asset => ({
+        ...asset,
+        location: asset.location || {
+          latitude: 28.6139, // Default to Delhi coordinates
+          longitude: 77.2090,
+          timestamp: new Date().toISOString()
+        }
+      }));
+
+      setAssets(assetsWithLocation);
+      if (assetsWithLocation.length > 0) {
+        setSelectedAsset(assetsWithLocation[0]);
+      }
+    } catch (err) {
+      setError("Failed to fetch assets");
+      console.error("Error fetching assets:", err);
+      toast.error("Failed to fetch assets");
+    } finally {
+      setIsLoading(false);
     }
-  }, [user, router]);
+  };
 
-  // Simulate fetching updated vehicle locations
+  // Update locations periodically
   useEffect(() => {
-    setIsLoading(false); // Set loading to false immediately
-    
+    if (!assets.length) return;
+
     const updateInterval = setInterval(() => {
       setAssets(prevAssets => 
-        prevAssets.map(asset => ({
-          ...asset,
-          location: {
-            lat: asset.location?.lat + (Math.random() - 0.5) * 0.001,
-            lng: asset.location?.lng + (Math.random() - 0.5) * 0.001
+        prevAssets.map(asset => {
+          // Check if location exists before accessing properties
+          if (!asset.location) {
+            return asset;
           }
-        }))
-      );
-    }, 5000); // Update every 5 seconds
 
-    return () => {
-      clearInterval(updateInterval);
-    };
-  }, []);
+          return {
+            ...asset,
+            location: {
+              latitude: asset.location.latitude + (Math.random() - 0.5) * 0.001,
+              longitude: asset.location.longitude + (Math.random() - 0.5) * 0.001,
+              timestamp: new Date().toISOString()
+            }
+          };
+        })
+      );
+    }, 5000);
+
+    return () => clearInterval(updateInterval);
+  }, [assets.length]);
 
   // Add effect to handle body scroll
   useEffect(() => {
@@ -162,39 +197,45 @@ export default function DashboardPage() {
     document.documentElement.classList.toggle("dark", newTheme === "dark");
   };
 
-  const handleAddAsset = (assetData: any) => {
-    const newAsset = {
-      id: assets.length + 1,
-      name: assetData.name || `Asset ${assets.length + 1}`,
-      assetId: assetData.assetId || `AST${(assets.length + 1).toString().padStart(3, '0')}`,
-      status: "inactive",
-      type: assetData.type || "equipment",
-      trackerId: `TRK${(assets.length + 1).toString().padStart(3, '0')}`,
-      location: { lat: 51.5074, lng: -0.1278 },
-    };
-    setAssets([...assets, newAsset]);
-  };
-
-  const handleEditAsset = (asset: any) => {
-    console.log("Edit asset:", asset);
-  };
-
-  const handleDeleteAsset = (asset: any) => {
+  const handleAddAsset = async (assetData: {
+    name: string;
+    gpsId: string;
+    type: string;
+  }) => {
     try {
-      const updatedAssets = assets.filter((a) => a.id !== asset.id);
-      setAssets(updatedAssets);
+      const newAsset = await api.createAsset(assetData);
+      setAssets(prev => [...prev, newAsset]);
+      setSelectedAsset(newAsset);
+      setAddAssetOpen(false);
+      toast.success("Asset added successfully");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add asset");
+    }
+  };
 
-      if (selectedAsset?.id === asset.id) {
-        if (updatedAssets.length > 0) {
-          setSelectedAsset(updatedAssets[0]);
-        } else {
-          setSelectedAsset(undefined);
-        }
-      }
+  const handleEditAsset = async (id: string, assetData: Partial<Asset>) => {
+    try {
+      const updatedAsset = await api.updateAsset(id, assetData);
+      setAssets(prev => prev.map(asset => 
+        asset.id === id ? updatedAsset : asset
+      ));
+      setSelectedAsset(updatedAsset);
+      toast.success("Asset updated successfully");
+    } catch (err) {
+      toast.error("Failed to update asset");
+      console.error("Error updating asset:", err);
+    }
+  };
 
-      setSidebarOpen(false);
-    } catch (error) {
-      console.error('Failed to delete asset:', error);
+  const handleDeleteAsset = async (id: string) => {
+    try {
+      await api.deleteAsset(id);
+      setAssets(prev => prev.filter(asset => asset.id !== id));
+      setSelectedAsset(null);
+      toast.success("Asset deleted successfully");
+    } catch (err) {
+      toast.error("Failed to delete asset");
+      console.error("Error deleting asset:", err);
     }
   };
 
@@ -208,17 +249,17 @@ export default function DashboardPage() {
   };
 
   // Filter assets based on search query and status
-  const filteredAssets = assets.filter(asset => {
+  const filteredAssets = assets?.filter(asset => {
     const matchesSearch = searchQuery.toLowerCase() === "" ||
       asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      asset.assetId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      asset.gpsId.toLowerCase().includes(searchQuery.toLowerCase()) ||
       asset.type.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesStatus = filterStatus === "all" ||
-      asset.status === filterStatus;
+      asset.status.toLowerCase() === filterStatus.toLowerCase();
 
     return matchesSearch && matchesStatus;
-  });
+  }) ?? [];
 
   const SidebarContent = () => (
     <div className="flex h-full flex-col">
@@ -342,7 +383,7 @@ export default function DashboardPage() {
                     <div className="flex-1 text-left">
                       <div className="text-sm font-medium">{asset.name}</div>
                       <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                        <span>{asset.assetId}</span>
+                        <span>{asset.gpsId}</span>
                         <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/50" />
                         <span className="capitalize">{asset.type}</span>
                       </div>
@@ -404,6 +445,28 @@ export default function DashboardPage() {
       </div>
     </div>
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <LoadingCar className="w-16 h-16 mb-4" />
+          <p className="text-muted-foreground">Loading assets...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">
@@ -500,23 +563,23 @@ export default function DashboardPage() {
       <div className="flex-1 flex flex-col min-h-screen lg:ml-64">
         <main className="flex-1 pt-16 lg:pt-0 flex items-center">
           <div className="w-full p-5">
-            {isLoading ? (
-              <LoadingCar />
-            ) : assets.length === 0 ? (
+            {filteredAssets.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] lg:min-h-screen p-8 text-center">
                 <div className="w-48 h-48 mb-6 text-primary/20">
                   <Package className="w-full h-full animate-float" />
                 </div>
                 <h3 className="text-2xl font-semibold mb-2">No Assets Found</h3>
                 <p className="text-muted-foreground mb-6 max-w-md">
-                  You haven't added any assets yet. Add your first asset to start tracking!
+                  {assets.length === 0 
+                    ? "You haven't added any assets yet. Add your first asset to start tracking!"
+                    : "No assets match your search criteria."}
                 </p>
                 <Button
                   onClick={() => setAddAssetOpen(true)}
                   className="bg-gradient-to-r from-primary/90 to-primary hover:from-primary hover:to-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300"
                 >
                   <Plus className="mr-2 h-5 w-5" />
-                  Add Your First Asset
+                  {assets.length === 0 ? "Add Your First Asset" : "Add New Asset"}
                 </Button>
               </div>
             ) : selectedAsset ? (

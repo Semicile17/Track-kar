@@ -32,24 +32,28 @@ import {
 import { DeleteAssetDialog } from "@/components/delete-asset-dialog"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
+import { LoadingCar } from "./ui/loading-car"
 
 interface Asset {
-  id: number
+  id: string
   name: string
   assetId: string
+  gpsId: string
   status: string
   type: string
   trackerId: string
-  location?: {
-    lat: number
-    lng: number
+  location: {
+    latitude: number
+    longitude: number
+    timestamp?: string
   }
 }
 
 interface AssetMapProps {
   asset: Asset
-  onEdit: (asset: Asset) => void
-  onDelete: (asset: Asset) => void
+  onEdit: (id: string, data: Partial<Asset>) => Promise<void>
+  onDelete: (id: string) => Promise<void>
 }
 
 const mapContainerStyle = {
@@ -112,7 +116,10 @@ export function AssetMap({ asset, onEdit, onDelete }: AssetMapProps) {
   const [map, setMap] = useState<google.maps.Map | null>(null)
   const [searchBox, setSearchBox] = useState<google.maps.places.Autocomplete | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [currentLocation, setCurrentLocation] = useState(asset.location || center)
+  const [currentLocation, setCurrentLocation] = useState({
+    lat: asset.location?.latitude ?? center.lat,
+    lng: asset.location?.longitude ?? center.lng
+  })
   const [pathCoordinates, setPathCoordinates] = useState<google.maps.LatLngLiteral[]>([])
   const [isMoving, setIsMoving] = useState(false)
   const [locationName, setLocationName] = useState("")
@@ -124,6 +131,11 @@ export function AssetMap({ asset, onEdit, onDelete }: AssetMapProps) {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [selectedHistoryLocation, setSelectedHistoryLocation] = useState<any>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [location, setLocation] = useState<google.maps.LatLngLiteral>({
+    lat: asset.location?.latitude ?? center.lat,
+    lng: asset.location?.longitude ?? center.lng
+  })
+  const [isLoading, setIsLoading] = useState(false)
   
   const { isLoaded, loadError } = useJsApiLoader({
     id: "google-map-script",
@@ -156,7 +168,10 @@ export function AssetMap({ asset, onEdit, onDelete }: AssetMapProps) {
   // Simulate real-time updates
   useEffect(() => {
     setIsMoving(false)
-    const initialLocation = asset.location || center
+    const initialLocation = {
+      lat: asset.location?.latitude ?? center.lat,
+      lng: asset.location?.longitude ?? center.lng
+    }
     setCurrentLocation(initialLocation)
     setPathCoordinates([])
     
@@ -164,6 +179,28 @@ export function AssetMap({ asset, onEdit, onDelete }: AssetMapProps) {
       map.panTo(initialLocation)
     }
   }, [map, asset.location])
+
+  useEffect(() => {
+    const pollLocation = async () => {
+      try {
+        const data = await api.getAsset(asset.gpsId);
+        if (data?.location) {
+          const newLocation = {
+            lat: data.location.latitude,
+            lng: data.location.longitude
+          }
+          setLocation(newLocation)
+          setCurrentLocation(newLocation)
+        }
+      } catch (error) {
+        console.error("Error fetching location:", error)
+      }
+    }
+
+    pollLocation()
+    const interval = setInterval(pollLocation, 30000)
+    return () => clearInterval(interval)
+  }, [asset.gpsId])
 
   const onLoad = (map: google.maps.Map) => {
     setMap(map)
@@ -213,7 +250,7 @@ export function AssetMap({ asset, onEdit, onDelete }: AssetMapProps) {
   }
 
   const handleDeleteConfirm = () => {
-    onDelete(asset)
+    onDelete(asset.id)
     setDeleteDialogOpen(false)
   }
 
@@ -280,7 +317,7 @@ export function AssetMap({ asset, onEdit, onDelete }: AssetMapProps) {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" onClick={() => onEdit(asset)}>
+                  <Button variant="outline" size="icon" onClick={() => onEdit(asset.id, {})}>
                     <Edit2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
@@ -406,7 +443,7 @@ export function AssetMap({ asset, onEdit, onDelete }: AssetMapProps) {
                   <span>Coordinates</span>
                 </div>
                 <div className="text-[10px] font-mono bg-secondary/20 p-1 rounded">
-                  {currentLocation.lat.toFixed(6)}, {currentLocation.lng.toFixed(6)}
+                  {location?.lat?.toFixed(6)}, {location?.lng?.toFixed(6)}
                 </div>
               </div>
               <div className="pb-1.5 border-b">
@@ -570,4 +607,4 @@ export function AssetMap({ asset, onEdit, onDelete }: AssetMapProps) {
       />
     </div>
   )
-} 
+}

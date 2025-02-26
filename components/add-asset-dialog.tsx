@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import { api } from "@/lib/api"
+import type { Asset } from "@/lib/types"
 import {
   Dialog,
   DialogContent,
@@ -24,32 +26,41 @@ import { Package, Wrench as Tool, Box } from "lucide-react"
 interface AddAssetDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onAdd: (data: any) => void
+  onAdd: (data: { name: string; assetId: string; gpsId: string; type: string }) => Promise<void>
 }
 
 export function AddAssetDialog({ open, onOpenChange, onAdd }: AddAssetDialogProps) {
   const [name, setName] = useState("")
   const [assetId, setAssetId] = useState("")
+  const [gpsId, setGpsId] = useState("")
   const [type, setType] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setError("")
 
     try {
+      // First validate GPS ID using the API endpoint
+      await api.validateGpsId(gpsId);
+      
+      // If validation passes, proceed with asset creation
       await onAdd({
         name,
         assetId,
+        gpsId,
         type,
       })
       onOpenChange(false)
       // Reset form
       setName("")
       setAssetId("")
+      setGpsId("")
       setType("")
-    } catch (error) {
-      console.error("Failed to add asset:", error)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add asset")
     } finally {
       setIsSubmitting(false)
     }
@@ -66,6 +77,9 @@ export function AddAssetDialog({ open, onOpenChange, onAdd }: AddAssetDialogProp
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
+            {error && (
+              <div className="text-sm text-destructive">{error}</div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="name">Asset Name</Label>
               <Input
@@ -80,9 +94,19 @@ export function AddAssetDialog({ open, onOpenChange, onAdd }: AddAssetDialogProp
               <Label htmlFor="assetId">Asset ID</Label>
               <Input
                 id="assetId"
-                placeholder="Enter asset ID"
+                placeholder="Enter Asset ID"
                 value={assetId}
                 onChange={(e) => setAssetId(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gpsId">GPS ID</Label>
+              <Input
+                id="gpsId"
+                placeholder="Enter GPS ID"
+                value={gpsId}
+                onChange={(e) => setGpsId(e.target.value)}
                 required
               />
             </div>
@@ -128,4 +152,4 @@ export function AddAssetDialog({ open, onOpenChange, onAdd }: AddAssetDialogProp
       </DialogContent>
     </Dialog>
   )
-} 
+}
